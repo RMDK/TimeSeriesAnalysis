@@ -1,0 +1,114 @@
+Time Series Analysis: 
+========================================================
+## Definitions and Reference Material
+#### Not sure how this file is going to work yet!
+
+[Visit my website](http://www.rmdk.ca/projects]) for more like this! I would love to hear your feedback (seriously). 
+```{r}
+library(TSA, quietly=TRUE, warn.conflicts=FALSE)
+require(knitr)
+library(ggplot2)
+```
+#### Data Sources:
+Heavily borrowed from:
+Textbook: [Time Series Analysis and It's Application](http://books.google.ca/books/about/Time_Series_Analysis_and_Its_Application.html?id=ahdvcgAACAAJ&redir_esc=y)
+
+[Wikipedia](http://en.wikipedia.org/wiki/Stationary_process)
+
+1.0 Basic Examples and Definitions
+------
+The next few examples are representations of common types of time series. We then defined some terms and theory that are useful to understand prior to moving onto real analysis.
+
+### Ex 1.00: Moving Averages
+
+Consider some white noise, smoothed by a moving average using `filter()`. This smoother representation eliminates some of the faster oscillations, and leaves us with a more representative trend.
+
+```{r}
+set.seed(1122)
+d<-rnorm(500, 0, 1) # 500 samples between 0, 1
+D<-filter(d, sides=2, rep(1/3, 3))
+```
+
+
+```{r fig.retina=2, fig.width=7, fig.height=6}
+par(mfrow=c(2,1))
+plot.ts(d, main='White Noise')
+plot.ts(D, main='Moving Average')
+```
+
+### Ex 1.11: Autoregressions
+
+Create a prediction of the current value of `x` as a function of the previous values `x - t`. Auto-regressive models, and other similar generalizations can be used as an underlying model for many time series data.
+
+* One way to to do it in `R`:
+
+```{r}
+# Add an extra 50 values for boundary effect
+d = rnorm(550, 0, 1)
+D = filter(d, filter=c(1,-0.9), method='recursive')[-(1:50)]
+```
+
+```{r fig.retina=2}
+par(mfrow=c(2,1))
+plot.ts(d, main='White Noise')
+plot.ts(D, main='Autoregression')
+
+```
+### Ex 1.12: Random Walk with Drift
+
+When the `drift parameter = 0`, the value of time series at time `t` is the value of the series at time `t - 1` plus a completely random movement determined by white noise. Here we plot two lines, 
+
+> Black: drift = 0
+
+> Red: drift = 0.2
+
+```{r}
+set.seed(154)
+d = rnorm(200, 0, 1); x = cumsum(d)
+D = d + 0.2; Dsum = cumsum(D)
+```
+
+```{r fig.retina=2, fig.height=5, fig.width=10}
+plot.ts(Dsum, ylim=c(-5,55), main='Random Walk', ylab='y')
+lines(x, col='red'); lines(0.2*(1:200), lty='dashed')
+```
+### Ex 1.13: Signal in Noise
+
+Most time series are composed of an underlying signal with some constant periodic variation, and a random error (noise) term. Generally, we are presented with data that show the signal obscured by noise. The purpose of many time series models is to decompose the time series to understand the underlying trend.
+```{r}
+# A simple cosin wave
+cs = 3*cos(2*pi*1:500/50 + 0.6*pi)
+# Some random noise
+noise = rnorm(500, 0, 1)
+```
+The ratio of amplitude of the signal to error is called the `signal-to-noise ratio (SNR); the larger the SNR, the easier it is to detect the signal. Here, we can easily understand the signal in the second panel, but would have a hard time confidently explaining the third panel.
+```{r fig.retina=2, fig.width=7, fig.height=6}
+par(mfrow=c(3,1), mar=c(3,2,2,1), cex.main=1.5)
+plot.ts(cs, main=expression(3*cos(2*pi*t/50 + 0.6*pi)))
+plot.ts(cs+noise, main=expression(3*cos(2*pi*t/50 + 0.6*pi) + N(0, 1)))
+plot.ts(cs+noise*5, main=expression(3*cos(2*pi*t/50 + 0.6*pi) + N(0, 25)))
+```
+
+These simple additive models are some of the most common, and takes the form
+
+$$xt = st + vt$$
+
+where `st` denotes an unknown signal, and `vt` denotes a white noise or correlated error term.
+
+### 1.2 Definitions
+
+Since correlation is such an essential component of time series analysis, the best descriptive statistics are expressed in terms of co-variance and correlation.
+
+* __The Autocorrelation function__ (ACF) is defined as:
+$$ρ(s,t) = 􏰿γ(s,s)γ(t,t)$$
+This function measures the cross-correlation of a signal with itself. Simply, it is the similarity between observations as a function of the time lag between them.
+
+* __Cross-correlation__ is a measure of similarity between _two_ time series as a function of a time lag applied to one of them.
+
+* __Stationarity__,  or a stationary process is a stochastic process whose joint probability distribution does not change when shifted in time. Consequently, the mean and variance, if present, do not change over time or follow any trends. In time series analysis, we often have to transform raw data to a stationary process to satisfy the assumptions of time series analysis models and functions. This definition of stationarity is known as _strict stationarity_, and is generally too strong for most modeling applications. Thus most analysis utilize a milder version called _weak stationarity_.
+
+* __Weak Stationarity__ only requires the `mean` and `covariance` to remain constant with respect to time. We will now reference weak stationarity as simply, stationary.
+
+## 2.0: Regression and Exploratory Data Analysis
+
+See next chapter, [here]()

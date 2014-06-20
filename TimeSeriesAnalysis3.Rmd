@@ -1,0 +1,253 @@
+---
+output:
+  html_document:
+    highlight: espresso
+    theme: readable
+    toc: yes
+---
+Time Series Analysis 3
+========================================================
+[Visit my website](http://rmdk.ca/projects/) for more like this! I would love to hear your feedback (seriously). 
+```{r}
+library(astsa, quietly=TRUE, warn.conflicts=FALSE)
+require(knitr)
+library(ggplot2)
+```
+#### Data Sources:
+Heavily borrowed from:
+
+* Textbook: [Time Series Analysis and It's Application](http://www.stat.pitt.edu/stoffer/tsa3/)
+
+* [Wikipedia](http://en.wikipedia.org/wiki/Stationary_process)
+
+* [Online course](https://onlinecourses.science.psu.edu/stat510/?q=node/47) at Penn State
+
+## 1.0 Introduction
+
+So far we have introduced autocorrelation and cross-correlation (ACF and CCF) as techniques for clarifying relations that may occur within and between time series at various lags. We also know how to build linear models based on classical regression techniques, and exploit the large lagged correlations noted from ACF or CCF to generate accurate predictor variables. This section deals with data that are possibly nonstationary with emphasis on forecasting future values. Now that we have covered the basics, we can focus on time series specific regression techniques, as classical regression is often not suitable for explaining all aspects of a time series.
+
+Using correlation we can identify lagged linear relationships, which give rise to autoregressive (AR) and autoregressive moving average (ARMA) models. Next we explore nonstationary models, the autoregressive integrated moving average (ARIMA). Eventually, we demonstrate the Box-Jenkins method for identifying an ARIMA model, as well as techniques for parameter estimation and forecasting. ARIMA models are models that may possibly include AR terms, MA terms, and differencing operations. 
+
+* When a model involves autoregressive terms it is referred to as an AR model. 
+* When a model only involves moving average terms, it is referred to as an MA model.
+* When a model contains both MA and AR terms, and no differencing is involved, then we refer to the model as ARMA.
+
+Most software specify the model attributes in the __order__ parameter (AR order, differencing, MA order).
+
+* A model with (only) two AR terms would be an ARIMA of order (2,0,0)
+* A MA(2) model would be specified as an ARIMA of order (0,0,2)
+* A ARIMA(1,1,1) model contains 1 AR term, 1 MA term and first differencing of the trend component. One could also specify a ARIMA(1,2,1), which takes the first difference of first differences; this type of difference could account for a quadratic trend in the data.
+
+One of the biggest challenges in time series analysis, is choosing the best model for the data at hand. Here we also introduce the _partial autocorrelation function_, which is the final diagnostic tool (paired with ACF, CCF, and lagged scatter plots) to help us choose the most suitable model.
+
+### 2.0 Autoregressive Moving Average Models
+
+Classical regression is a static global model. With time series, we can allow the dependent variable to be influenced by not only the current values of the independent variables, but past values as well. We can even include past values of the dependent variable. If the present can be modeled using only the past values of the independent variables, we can start to make very appropriate forecasting predictions.
+
+Autoregressive models are based on the idea that the current value of the series _x_<sub>_t_</sub>, can be explained as a function of past _p_ values, where _p_ is the number of steps into the past needed to forecast the current model. The extent to which we can forecast a real data series from its own past values can be investigated by interpreting the autocorrelation function, and/or lagged scatter plot matrix. For example, we may find using the scatter plots shows that lags 4 and 5 are linearly associated with the current value. The ACF could indicate positive lags at 1, 2, 12, and 36. 
+The AR(1) model takes the form
+
+$$xt=δ+ϕ1xt−1+wt$$
+
+where the correlation between observations _h_ time periods apart is:
+
+$$ρh=ϕh1$$
+
+AR(1) models value of _x_ at time _t_ is a linear function of the value of _x_ at time _t-1_. The model assumes:
+
+* The errors _w<sub>t</sub>_ are independently distributed with mean 0 and constant variance.
+* The errors _w<sub>t</sub>_ are independent of _x_<sub>_t_</sub>
+* The series _x1,  x2,  ... xn_ is weakly stationary. This requires the constant _|ϕ<sub>1</sub>| < 1_.
+* _φ_<sub>1</sub> is the slope in the AR(1) model and we now see that it also is the lag 1 autocorrelation.
+
+A example of a sample AR(1) process with $φ = 0.9$ and $φ = 0.-9$ are plotted below. This constant parameter defines how closely values across time are correlated to each other. $φ = 0.9$ means that observations contiguous in time will tend to be close in value. The second example then, implies the opposite, whereby values contiguous in time are negatively correlated. However, observations two points in time apart are positively correlated. 
+
+In general, if _φ_<sub>1</sub> is positive the ACF exponentially decreases to 0 as lag _h_ increases, and for negative _φ_<sub>1</sub>, the ACF also exponentially decays to 0 as lag increases, but the algebraic signs for the autocorrelations alternate between positive and negative.
+
+```{r fig.retina=2, fig.height=10}
+par(mfrow=c(4,1))
+plot(arima.sim(list(order=c(1,0,0), ar=0.9), n=100), ylab='x', 
+                    main=(expression(AR(1)~~~phi==+0.9)))
+acf(arima.sim(list(order=c(1,0,0), ar=0.9), n=100), lag.max=11, main='ACF')
+
+plot(arima.sim(list(order=c(1,0,0), ar=-0.9), n=100), ylab='x',
+     main=(expression(AR(1)~~~phi==-0.9)))
+acf(arima.sim(list(order=c(1,0,0), ar=-0.9), n=100), lag.max=11, main='ACF')
+
+```
+
+AR(1) models with $|ϕ1|>1$ are _explosive_ because the time series can quickly become large in magnitude. 
+
+### 2.1 Moving Average Models
+
+Moving average models MA of order _q_ (MA(_q_)), like autoregressive models that use lagged versions of _x_<sub>_t - 1_</sub> multiplied by a coefficient to predict _x_<sub>_t_</sub> , MA(_q_) models model __past error__ multiplied by a coefficient.
+
+$$MA(1): xt=μ+wt+θ1wt−1$$
+$$MA(2): xt=μ+wt+θ1wt−1+θ2wt−2$$
+$$MA(3): xt=μ+wt+θ1wt−1+θ2wt−2+⋯+θqwt−q$$
+
+_where_ $μ$ is the mean and $wt$ is the Gaussian normally distributed error term with mean 0.
+
+#### Some general ACF properties of MA(_q_) models:
+
+In general, MA(_q_) models have non-zero autocorrelations for the first _q_ lags and autocorrelations = 0 for all lags > _q_.
+
+A sample ACF with significant autocorrelation at _only_ lag 1 is an indicator of a possible MA(1) model.
+
+```{r}
+set.seed(1234)
+ma1<-arima.sim(list(order=c(0,0,1), ma=c(-0.5)), n=100) #Simulates 200 values from MA(1)
+```
+
+```{r fig.retina=2}
+par(mfrow=c(2,1))
+plot(ma1, type='b', main='Simulated MA(1)', ylab='y')
+acf(ma1, main='ACF for simulated sample data')
+```
+
+
+A sample ACF with significant correlations at lags 1 and 2, but non-significant autocorrelation for higher lags indicates possible MA(2) model.
+
+```{r}
+set.seed(1234)
+ma1<-arima.sim(list(order=c(0,0,2), ma=c(0.5, 0.5)), n=100) #Simulates 200 values from MA(1)
+```
+
+```{r fig.retina=2}
+par(mfrow=c(2,1))
+plot(ma1, type='b', main='Simulated MA(2)', ylab='y')
+acf(ma1, main='ACF for simulated sample data')
+```
+
+#### 2.11 Non-uniqueness of MA models and Invertibility
+
+We note that the correlation between lags is the same for $θ$ and $1/θ$. To satisfy this theoretical restriction called __invertibility__, we restrict MA(1) models to have values with an absolute value < 1.
+
+A MA model is said to be converging if it is algebraically equivalent to a converging infinite order AR model. This means that the AR coefficients decrease to 0 as we move back in time. This invertibility is programmed into our software and is not something we worry about in data analysis.
+
+### 2.2 Partial Autocorrelation Function
+
+We have seen that for MA(_q_) models, the ACF will be insignificant for lags > _q_. Therefore, the ACF is provides considerable information for specifying an MA(_q_) process. Unfortunately, if the process is ARMA or AR, the ACF alone yields little information about the orders of dependence (_p_, _q_). There is however, another function which can act like the ACF for an MA process, but for AR models; the __partial autocorrelation function__ (PACF). 
+
+An easy example of a PACF can be explained using a linear regression where we predict y from _x_<sub>_1_</sub>, _x_<sub>_2_</sub>, and _x_<sub>_3_</sub>. Basically, in a PACF we want to, for example,  correlate the "parts" of _y_ and _x_<sub>_3_</sub> that are not predicted by _x_<sub>_1_</sub> and _x_<sub>_2_</sub>. However, what happens normally (non-partial) is that the linear dependency between _x_<sub>_3_</sub> and _y_ has accounted accounted for the dependency between _y_ and _x_<sub>_1_</sub> and _x_<sub>_2_.
+
+Similarly for time series, For a time series, the PACF is the conditional autocorrelation between _x_<sub>_s_</sub> and _x_<sub>_t_</sub>, with the linear effect of everything in between those two points removed. Consider and AR(1) model, whereby the correlation between _x<sub>t</sub>_ and _x<sub>t - 2</sub>_ is not zero, as it would be for an MA(1), because _x<sub>t</sub>_ is dependent on _x<sub>t - 2</sub>_ through _x<sub>t - 1</sub>_. Thus, a PACF would break this chain of dependence by literally subtracting out (or partial out) the effect of _x<sub>t - 1</sub>_. 
+
+For an AR model, the theoretical PACF essentially "shuts off" the past order of the model. Thus, exactly the same as the MA(_q_) model selection using an ACF, we identify the order of the model by the number of non-zero partial autocorrelations. An AR(1) model will have one significant (non-zero) autocorrelation at lag 1 in the PACF.
+
+> Note: the PACF of an MA(1) model will have a pattern that gradually tapers to zero.
+
+## 3.0 Specifying the elements of the model.
+
+Recall that we specify a model using the __order__ attribute, (AR order, differencing, MA order). And that specifying an ARIMA model is all about identifying the form combination for any particular time series.
+Most software specify the model attributes in the __order__ parameter (AR order, differencing, MA order).
+
+* A model with (only) two AR terms would be an ARIMA of order (2,0,0)
+* A MA(2) model would be specified as an ARIMA of order (0,0,2)
+* A ARMA(1,1) would be a stationary model with AR and MA of order 1.
+* A ARIMA(1,1,1) model contains 1 AR term, 1 MA term and first differencing of the trend component. One could also specify a ARIMA(1,2,1), which takes the first difference of first differences; this type of difference could account for a quadratic trend in the data.
+
+#### Identifying a possible model
+
+Three items should be considered to determine a first guess at the form of an ARIMA model:
+
+1. Time series plot
+2. ACF
+3. PACF
+
+#### 3.1 Time seris plot
+What to look for : __possible trends__, __seasonality__, __outliers__, __constant/non-constant variance__.
+
+* This is the most obvious first step to begin to understand the data; though you will not be able to spot a model, you could be informed of some possible next steps.
+
+* If there is an obvious upward or downward linear trend, a first difference may be needed, or second differences for a quadratic term. Yet, _over differencing_ can cause us to introduce unnecessary levels of dependency.
+
+* For data with a curved upward trend and increasing variance, we can consider transforming the series with either logarithm or square root.
+
+> Note: non-constant variance in a series with no trend may indicate something like and ARCH model which is designed for modelling changing variance over time, we will cover this later.
+
+### 3.2 ACF and PACF
+
+The ACF and PACF should be considered together, as a few combining patterns will stand out, especially with experience.
+
+* AR models have theoretical PACFs with non-zero values at the AR terms in the model, and zero values elsewhere. The ACF will taper to zero in some way.
+* An AR(2) has a sinusoidal ACF that converges to zero.
+* MA models have theoretical ACFs with non-zero values at the MA terms in the model, and zero terms elsewhere.
+* ARMA models have ACFs and PACFs that both tail off to zero. These are difficult because the order will not be obvious. The best way to do it is guise a few terms and test their model estimates.
+* if the ACF and PACF do not tail off, and have values close to 1 over many lags, the series is -non-stationary and differences is needed. Try first differencing then investigate ACF and PACFs.
+* if all the autocorrelations are insignificant, then the series is random (white noise). Your work is easy and done in this case.
+* If you take first difference and all the autocorrelations are insignificant, then the series is called a random walk, and you are done. The data are dependent and not identically distributed; both the mean and variance increase through time.
+
+### 3.3 Estimating and Diagnosing a Possible Model.
+
+After you have made a few guesses at the possible model, we use software to estimate the coefficients. Usually this is done using maximum likelihood estimation methods. Once the model is estimated...
+
+* Look at the significance of the coefficients, check p-values to verify they are significantly different from zero.
+* Look at the ACF of the residuals. A good model should have all non-significant autocorrelation. If this isn't true, you should try another model.
+* Look at the Ljung test for possible residual autocorrelation.
+* if non-constant variance is a concern, look into a plot of residuals vs fits, or a time series plot of the residuals.
+
+#### What if more than one model looks OK?
+
+Sometimes, more than one model can appear to work for the same time series. 
+
+* Possibly choose the simplest model (with fewest parameters)
+* Examine standard errors of forecast values, pick the model with lowest standard errors for future predictions.
+* compare models with AIC, AICc or BIC fitting diagnostics.
+
+## 4.0 Examples
+
+Lake Erie water level in October. There is possibly some overall trend, but it we can't be sure yet. We will not worry about a trend for now. Let's plot the ACF and PACF.
+
+```{r}
+data <- c(14.3, 14.6, 13.5, 14.2, 12.1, 14.19, 14.55, 13.6, 14.59, 16.6, 15.4,
+          12.89, 12.2, 12.15, 10.89, 11.11, 11.98, 13.44, 14.05, 13.91, 14.1,
+          12.66, 14.6, 16.7, 15.4, 17.1, 15.45, 16.76, 15.7, 14.1, 15.3, 16.4,
+          17.09, 16.8, 16.98, 16.39, 15.8, 15.1, 13.7, 13.79, 15.7)
+# load built in commands for TSA diagnostics
+source(url("http://lib.stat.cmu.edu/general/tsa2/Rcode/itall.R")) 
+```
+```{r fig.retina=2}
+plot(data, type='b', ylab='water level')
+acf2(data)
+```
+
+The PACF shows a single spike at the first lag, and the ACF shows a tapering pattern, right away we can see an AR(1) model might be appropriate.
+
+#### Estimating the model
+```{r fig.retina=2, fig.height=10, fig.width=8}
+sarima (data, 1, 0, 0, ) # this is the AR(1) model estimated with the tools loaded above
+```
+
+#### Interpreting the diagnostics
+
+The AR coefficient is statistically significant (z = 0.709/0.1094 = 6.480).  It’s not necessary to test the mean coefficient.  We know that it’s not 0.
+
+The time series plot of the standardized residuals seems to indicate there is no trend in the residuals, no outliers, and no obvious change in variance over time.
+
+The ACF of the residuals shows no significant autocorrelations, great!
+
+The Q-Q plot is a normal probability plot; small deviations at the tails are not abnormal, and usually nothing to worry about.
+
+The last plot on the bottom gives p-values for the Ljung-Box-Pierce statistic for each lag up to 20. These tests consider the accumulated residual autocorrelation from lag 1. The dashed blue line is at 0.05, and all p-values are above it, which is a good result for this test.
+
+### What a poorly specified model will look like.
+
+What happens if we misinterpreted the ACF and PACF and used an MA(1) model instead of an AR(1) model?
+```{r fig.retina=2, fig.height=10, fig.width=8}
+sarima(data, 0, 0, 1)
+```
+The MA(1) coefficient is still significant, but overall the statistics are worse than our AR(1) model.
+
+The diagnostic plots are quite informative as well. The ACF has a significant spike at lag 2, and several Ljung-Box_pierce p-values are below 0.05. 
+
+#### Another poorly specified model.
+
+Next we try fitting an ARMA model to the same data
+```{r fig.retina=2, fig.height=10, fig.width=8}
+sarima(data, 1, 0, 1) # over parameterized model
+```
+
+Right away we see the MA(1) coefficient is insignificant, thus we could drop that term and be left with the correct AR(1) model. The AIC, BIC and standard error are also higher than the correct AR(1) model.
+
+#### The next lesson will include _forecasting with ARIMA models_, [here](http://rpubs.com/ryankelly/tsa4).

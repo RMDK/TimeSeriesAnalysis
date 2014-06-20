@@ -1,0 +1,178 @@
+---
+output:
+  html_document:
+    fig_height: 4
+    highlight: espresso
+    theme: cosmo
+    toc: yes
+---
+Seasonal ARIMA Models
+========================================================
+[Visit my website](http://rmdk.ca/projects/) for more like this! I would love to hear your feedback.
+
+#### Data Sources:
+
+* Textbook: [Time Series Analysis and It's Application](http://www.stat.pitt.edu/stoffer/tsa3/)
+
+* [Wikipedia](http://en.wikipedia.org/wiki/Stationary_process)
+
+* [Online course](https://onlinecourses.science.psu.edu/stat510/?q=node/47) at Penn State
+
+####Included in this tutorial
+
+* Seasonal ARIMA models 
+* Model Selection and Forecasting
+
+<hr>
+```{r echo=FALSE}
+library(astsa)
+require(knitr)
+library(ggplot2)
+library(forecast, warn.conflicts = FALSE)
+```
+
+
+Seasonality refers to a regular pattern of changes that repeat for _S_ time periods, where _S_ defines the number of timer periods until the pattern repeats again.
+
+In a seasonal ARIMA model, AR and MA terms predict _x_<sub>_t_</sub> using data values and errors at times with lags that are multiples of _S_.
+
+* With monthly data and an annual trend (_S_ = 12), a seasonal first order autoregressive model would use _x_<sub>_t_ - 12</sub> to predict _x_<sub>_t_</sub>. For example, if we were selling ice cream, we might predict August sales using last years August sales. Similarly, you could use the past two Augusts and include _x_<sub>_t_ - 24</sub>.
+
+Seasonality, of course, usually causes the time series to be nonstationary. __Seasonal differencing__ is defined as a difference between a value and a value with lag that is a multiple of _S_.
+
+Thus, seasonal differencing removes a seasonal trend and can also get rid of a seasonal random walk (another type of nonstationarity).
+
+However, if an overall trend is present in the data, we may also need non-seasonal differencing. Often a first difference will detrend the data.
+
+It is important to note that __non-seasonal behavior will still matter in seasonal models__. That is, it is likely that short run non-seasonal components will still contribute to the model. For ice cream sames, it could be that the sames from last August and this July produce the best model.
+
+## The seasonal ARIMA Model
+
+This model incorporates both seasonal and non-seasonal factors in a multiplicative model.
+
+$$ARIMA(p, d, q)*(P, D, Q)S$$
+
+where the capital _P, D, and Q_ are the seasonal components of the AR, differencing, and MA components.
+
+### Example 1: ARIMA(0, 0, 1) x (0, 0, 1)<sub>12</sub>
+
+The model includes seasonal and non-seasonal MA(1) terms, no differencing and no AR terms, and the seasonal period is _S_ = 12. Thus this model has MA terms at lags 1, 12, and 13. Also there is a non-zero autocorrelation at lag 11.
+
+```{r fig.retina=2}
+arima.m<-arima.sim(list(order = c(0,0,12), ma = c(0.7,rep(0,10),0.9)), n = 200)
+acf(arima.m)
+```
+
+### Example 2: ARIMA(1, 0, 0) x (1, 0, 0)<sub>12</sub>
+
+A seasonal AR(1) model has significant lags at 1, 12 and 13, with an increasing trend before lag 12, sharply cut off at lag 13.
+
+```{r fig.retina=2}
+ar_pacf<-ARMAacf (ar = c(.6,0,0,0,0,0,0,0,0,0,0,.5,-.30),lag.max=30,pacf=T)
+plot(ar_pacf, type='h')
+```
+
+## How to identify a seasonal model
+
+1. Do a time series plot of the data. Examine it for global trends and seasonality. 
+
+2. Do any necessary differencing...
+    * if there is seasonality and no trend take a difference of lag _S_. For example, take a 12th difference for monthly data with seasonality.
+    * If there is a linear trend and no obvious seasonality, take a first difference. If there is a curved trend, consider a transformation of the data before differencing.
+    * If there is both trend and seasonality, apply both a non-seasonal and seasonal difference to the data, as two successive operations. For example:
+    
+```{r eval=FALSE}
+diff1 <- diff(x, 1)
+diff1_and_12 <- diff(diff1, 12)
+```
+
+    * If there is no obvious trend or seasonality, do not take any differences.
+
+3. Examine the ACF and PACF of the differenced data (if necessary). We can begin to make some basic guesses about the most appropriate model at this time.
+
+    * _non-seasonal terms_: Examine the early labs(1, 2, 3, ...) to judge non-seasonal terms. Spikes in the ACF (at low lags) indicate non-seasonal MA terms. Spikes in the PAC (at low lags) indicated possible non-seasonal AR terms.
+    * _Seasonal terms_: Examine the patterns across lags that are multiples of _S_. For example, for monthly data, look at lags 12, 24, 36 (probably wont need to look much past the first two or three seasonal multiples). Judge the ACF and PACF at the seasonal lags in the same way you do for the earlier lags.
+  
+4. Estimate the model(s) that might be reasonable for the data based on the previous steps.
+
+5. Examine the residuals (with ACF, Box-Pierce, and other means) to see if the model seems good. Compare AIC or BIC values to determine the best of several models.
+
+## Full example
+
+__Time series plot of 144 consecutive months on the colorado river__
+
+```{r fig.retina=2}
+source(url("http://lib.stat.cmu.edu/general/tsa2/Rcode/itall.R")) 
+
+dat<-(read.csv('colorado_river.csv'))
+
+plot(dat[,3], type='o')
+```
+
+Without having some experience with the data, it is difficult to identify seasonality trends here. If this was your job your would probably know that river flow is indeed seasonal, with perhaps higher flows in late spring and early summer, due to snow runoff.
+
+With this in mind, we could aggregate the data by month to better understand this trend.
+
+```{r fig.retina=2, fig.height=5}
+require(ggplot2)
+
+ggplot(dat, aes(x=month, y=flow/1000))+
+  stat_summary(geom = 'line', fun.y='mean')+ # take the mean of each month
+  scale_x_discrete(breaks=seq(1,12,1), labels=seq(1,12,1))+
+  theme_bw()+ # add a little style
+  facet_wrap(~year) # visualize year by year
+```
+
+
+Further, looking back at the first plot, it is difficult to see if there is a global trend, if any, it is slight.
+
+Since we hypothesize that there is seasonality, we can take the seasonal difference (create a variable that gives the 12TH differences), then look at the ACF and PACF.
+
+```{r fig.retina=2, results='hide',  fig.height=5}
+data<-ts(dat[1:72,][,3])
+
+diff_12 <- diff(data, 12)
+acf2(diff_12, 48)
+```
+
+### Fitting the model
+__Seasonal behavior__: we see that for both the ACF and PACF we have significant autocorrelation at seasonal (12, 24, 36) lags. The ACF has a cluster around 12, and not much else besides a tapering pattern throughout. Further, the PACF also has spikes on two multiples of _S_, AR(2)
+
+__Non-seasonal behavior__: The PACF shows a clear spike at lag 1, and not much else till lag 11. The ACF also has a tapering pattern in the early lags (and seasonal lags). This is indicative of an AR(1) component.
+
+_Let's try out the model_... __ARIMA (1,0, 0) x (2, 1, 0)<sub>12</sub>__
+
+```{r fig.retina=2 , fig.height=5}
+data<-ts(data, freq=12)
+
+mod1<-sarima(data, 1,0,0,2,1,0,12)
+
+# Using standard R functions
+mod2<-Arima(data,order=c(1, 0, 0),
+            seasonal=list(order=c(2, 1, 0), period=12))
+mod2
+```
+
+We can see from the diagnostics that this is indeed a decent fit. What doesn't look good is the residuals vs. the fitted values, which reveals strong non-constant variance. We’ve got three choices for what to do about the non-constant variance: (1) ignore it, (2) go back to step 1 and try a variance stabilizing transformation like log or square root, or (3) use an ARCH model that includes a component for changing variances.  We’ll get to ARCH models later.
+
+In the second plot below, we see that we can easily show how close our predictions were to our observed data.
+
+```{r fig.retina=2}
+plot(fitted(mod2), mod2$residuals)
+
+plot(mod2$x, col='red')
+lines(fitted(mod2), col='blue')
+```
+
+
+### Forecasting
+Now that we have a reasonable prediction, we can forecast the model, say 24 months into the future.
+
+```{r fig.retina=2}
+sarima.for(data, 24, 1,0,0,2,1,0,12)
+
+#Using native R commands
+
+predict(mod2, n.ahead=24)
+```
+

@@ -1,0 +1,34 @@
+---
+title: 'TSA: Start to Finish Examples'
+author: "Ryan Kelly"
+date: "June 19, 2014"
+output:
+  html_document:
+    theme: spacelab
+---
+
+[Visit my website](http://rmdk.ca/projects/) for more like this! I would love to hear your feedback (seriously). 
+
+```{r}
+library(astsa, quietly=TRUE, warn.conflicts=FALSE)
+require(knitr)
+library(ggplot2)
+```
+#### Data Sources:
+Heavily borrowed from:
+
+* Little R book: [link](http://a-little-book-of-r-for-time-series.readthedocs.org/en/latest/src/timeseries.html#selecting-a-candidate-arima-model)
+
+## Reading Time Series Data
+
+```{r}
+url='http://robjhyndman.com/tsdldata/misc/kings.dat'
+
+#Read in the data and skip the first three lines.
+kings<-scan(url, skip=3)
+kings
+```
+
+This dataset records the age of death for 42 successive kings of England.
+
+__Convert the data into a time series__
