@@ -4,9 +4,14 @@ author: "Ryan Kelly"
 date: "June 19, 2014"
 output:
   html_document:
-    theme: spacelab
+    fig_height: 4
+    highlight: pygments
+    theme: united
+    toc: yes
 ---
 
+
+<hr>
 [Visit my website](http://rmdk.ca/projects/) for more like this! I would love to hear your feedback (seriously). 
 
 ```{r}
@@ -19,16 +24,431 @@ Heavily borrowed from:
 
 * Little R book: [link](http://a-little-book-of-r-for-time-series.readthedocs.org/en/latest/src/timeseries.html#selecting-a-candidate-arima-model)
 
-## Reading Time Series Data
+## Reading Time Series
 
 ```{r}
-url='http://robjhyndman.com/tsdldata/misc/kings.dat'
-
 #Read in the data and skip the first three lines.
-kings<-scan(url, skip=3)
+kings<-scan('http://robjhyndman.com/tsdldata/misc/kings.dat', skip=3)
 kings
 ```
 
 This dataset records the age of death for 42 successive kings of England.
 
 __Convert the data into a time series__
+
+It is best to convert the data into an R time series object after you have successfully loaded the data.
+
+```{r}
+kings <- ts(kings)
+kings
+```
+
+However, it is common to come across time series that have been collected at regular intervals that are less than the one year of the `kings` dataset, for example, monthly, weekly or quarterly. In these cases we can specify the number of times that data was collected per year by using the `frequency` parameter in the `ts( )` function. For monthly data, we set `frequency = 12`. We can also specify the first year that the data were collected and the first interval in that year by using the 'stat' parameter. For example, the third quarter of 1909 would be `start = c(1909, 3).
+
+Next we load in a dataset of number of births per month in New York city, from January 1946 to December 1958.
+
+```{r}
+births <- scan("http://robjhyndman.com/tsdldata/data/nybirths.dat")
+
+births <- ts(births, frequency = 12, start = c(1946, 1))
+births
+```
+
+## Plotting Time Series
+
+The next step in any time series analysis is to plot the data
+
+```{r fig.retina=2}
+plot.ts(kings)
+```
+
+At this point we could guess that this time series could be described using an additive model, since the random fluctuations in the data are roughly constant in size over time.
+
+Let's look at the `births` data.
+
+```{r fig.retina=2}
+plot.ts(births)
+```
+
+We can see from this time series that there is certainly some seasonal variation in the number of births per month; there is a peak every summer, and a trough every winter. Again the it seems like this could be described using an additive model, as the seasonal fluctuations are roughly constant in size over time and do not seem to depend on the level of the time series, and the random fluctuations seem constant over time.
+
+How about a time series of a beach town souvenir shop
+
+```{r fig.retina=2}
+gift <- scan("http://robjhyndman.com/tsdldata/data/fancy.dat")
+gift<- ts(gift, frequency=12, start=c(1987,1))
+
+plot.ts(gift)
+```
+
+In this case, an additive model is not appropriate since the size of the seasonal and random fluctuations change over time and the level of the time series. It is then appropriate to transform the time series so that we can model the data with a classic additive model
+
+```{r fig.retina=2}
+logGift <- log(gift)
+plot.ts(logGift)
+```
+
+## Decomposing Time Series
+
+Decomposing a time series means separating it into it's constituent components, which are often a trend component and a random component, and if the data is seasonal, a seasonal component.
+
+### Decomposing non-Seasonal Data
+
+Recall that non-seasonal time series consist of a trend component and a random component. Decomposing the time series involves tying to separate the time series into these individual components.
+
+One way to do this is using some `smoothing method`, such as a simple moving average.
+
+The `SMA()` function in the `TTR` R package can be used to smooth time series data using a moving average. The `SMA` function takes a span argument as `n` order. To calculate the moving average of order 5, we set `n = 5`.
+
+Let's try to see a clearer picture of the Kings dataset trend component by applying an order 3 moving average.
+
+```{r fig.retina=2}
+library(TTR)
+
+kingsSMA3 <- SMA(kings, n=3)
+plot.ts(kingsSMA3)
+```
+
+It seems like there is still some random fluctuations in the data, we might want to try a big larger of a smoother.
+
+```{r fig.retina=2}
+library(TTR)
+
+kingsSMA3 <- SMA(kings, n=8)
+plot.ts(kingsSMA3)
+```
+
+This is better, we can see that the death of English kings has declined from ~55 years to ~40 years for a brief period, followed by a rapid increase in the next 20 years to ages in the 70's.
+
+### Decomposing Seasonal Data
+
+A seasonal time series, in addition to the trend and random components, also has a seasonal component. Decomposing a seasonal time series means separating the time series into these three components.
+
+In R we can use the `decompose()` function to estimate the three components of the time series.
+
+To estimate the trend, seasonal, and random components of the New York births dataset we can ...
+
+```{r fig.retina=2}
+birthsComp <- decompose(births)
+plot(birthsComp)
+```
+
+### Seasonally Adjusting
+
+If you have a seasonal time series, you can seasonally adjust the series by estimating the seasonal component, and subtracting it from the original time series.
+
+```{r fig.retina=2}
+birthsSeasonAdj <- births - birthsComp$seasonal
+plot(birthsSeasonAdj)
+```
+
+We can see now that time time series simply consists of the trend and random components.
+
+## Forecasts using Exponential Smoothing
+
+Exponential smoothing is a common method for making short-term forecasts in time series data.
+
+### Simple Exponential Smoothing
+
+If you have a time series with constant level and no seasonality, you can use `simple exponential smoothing` for short term forecasts. 
+
+This method is a way of estimating the level at the current time point. Smoothing is controlled by the parameter `alpha` for the estimate of the level at the current time point. The value of `alpha` lies between 0 and 1. Values of `alpha` close to 0 mean that little weight is places on the most recent observations when making forecasts of future values.
+
+#### Example 1
+
+Total annual rainfall in inches for London, from 1813 - 1912.
+
+```{r fig.retina=2}
+rain <- ts(scan("http://robjhyndman.com/tsdldata/hurst/precip1.dat",skip=1), start=c(1813))
+plot.ts(rain)
+```
+
+You can see from the plat that there is roughly constant variance over time, thus we can describe this as an additive model, thus we can make forecasts using simple exponential smoothing.
+
+In R we can use the `HoltWinters()` function. For simple exponential smoothing, we need to set the parameters `beta = FALSE` and `gamma = FALSE`.
+
+```{r}
+rainF <- HoltWinters(rain, beta=FALSE, gamma = FALSE)
+rainF
+```
+
+The output tells us that the estimated value of the `alpha` parameter is about 0.024, which is very close to zero. This means that the forecasts are based on both recent and less recent observations, though there is more weight placed on recent observations. By default, `HoltWinters` makes forecasts for the total time period covered in the original series. We can get the fitted values of the forecasts and plot them simply by calling `plot()` on our variable storing the model we fit above. 
+
+```{r fig.retina=2}
+plot(rainF)
+```
+
+To test the accuracy, we can calculate the SSE for the in-sample forecast errors.
+```{r}
+rainF$SSE
+```
+
+If we want to make predictions into the future (past 1912) we can utilize the `forecast.HoltWinters()` function from the R package `forecast`. We specify how many predictions into the future we will make with the `h` parameter. For example: to make predictions into the next 8 years we would type:
+
+```{r fig.retina=2}
+library(forecast)
+
+rainF8 <- forecast.HoltWinters(rainF, h=8)
+plot.forecast(rainF8)
+```
+
+where the dark gray is the 80% confidence interval, the light gray is the 95% confidence interval, and the blue line are the actual predictions.
+
+To test the validity of this model we can again compute the SSE, however, we should also examine the correlations between the forecast errors. If correlation exists in the error terms, it is likely that the simple exponential smoothing forecasts could be improved upon by another technique.
+
+```{r fig.retina=2}
+acf(rainF8$residuals)
+```
+
+We can see that lag 3 is just about touching the significance interval. To test whether there is significant evidence for non-zero correlations we can carry out a `Ljung-Box test`. In R we can use the `Box-test()` function.
+
+```{r}
+Box.test(rainF8$residuals, lag=20, type='Ljung-Box')
+```
+
+Here we see that the `p-value` is ~0.6, so there is little evidence of non-zero autocorrelation in the forecast errors.
+
+To be sure the predictive model cannot be improved upon we can check whether the forecast errors are normally distributed with `mean = 0` and constant variance.
+
+```{r fig.retina=2}
+plot.ts(rainF8$residuals)
+```
+
+While the mean is roughly constant, the variance does not seem to be obviously constant, but it is close enough.
+
+### Exponential Smoothing
+
+If you have a time series that can be described using an additive model with a trend and no seasonality, you could use `Holt's exponential smoothing` to describe the series. The smoothing is controlled by parameters `alpha`: the estimate of the level at the current time point, and `beta`: the estimate of the slope `b` of the trend component at the current time point. These two parameters range form 0 - 1, and similar to simple smoothing, values close to 0 mean that little weight is placed on the most recent observations when making forecasts.
+
+Here we utilize this model on a time series of annual diameter of woman's skirts at the hem, from 1866 to 1911. 
+
+```{r fig.retina=2}
+skirts <- ts(scan("http://robjhyndman.com/tsdldata/roberts/skirts.dat",skip=5), start=c(1866))
+plot.ts(skirts)
+```
+
+To make forecasts we will again use the `HotWinters()` function. For exponential smoothing, we only set the `gamma = FALSE`.
+
+```{r}
+skirtsF <- HoltWinters(skirts, gamma=F)
+skirtsF; skirtsF$SSE
+```
+
+The high estimates of `alpha` and `beta` tell us that the estimate of the current level are basted mostly on recent observations. This makes sense since the data change rapidly.  To examine the fit visually, we can plot the forecasts vs the original data.
+
+```{r fig.retina=2}
+plot(skirtsF)
+```
+
+```{r fig.retina=2}
+# Forecast into the future
+skirtsF19 <- forecast.HoltWinters(skirtsF, h=19)
+plot.forecast(skirtsF19)
+```
+
+To validate the predictive model, we can check to verify the residuals are not correlated.
+
+```{r fig.retina=2, fig.height=5}
+par(mfrow=c(3, 1))
+acf(skirtsF19$residuals, lag.max=20)
+Box.test(skirtsF19$residuals, lag=20, type='Ljung-Box')
+plot.ts(skirtsF19$residuals)
+```
+
+Here, we see that the ACF shows significant correlation at lag 5. However, the Ljung-Box test indicates little evidence of non-zero autocorrelations for 20 lags, which means the autocorrelation at lag 5 could be expected by chance. Further, the residuals are normally distributed, thus we can probably conclude this model as an adequate representation of the data.
+
+#### Example 2
+
+The beach-side gift shop dataset is an example of a time series with a trend component and seasonality.
+
+```{r fig.retina=2}
+giftLog <- log(gift) # take natural log
+plot.ts(giftLog)
+```
+
+```{r}
+giftLogF <- HoltWinters(giftLog)
+giftLogF
+giftLogF$SSE
+```
+
+From this output we see that the `alpha = 0.41` which is closer to 0 than 1 and indicates that the estimate of the level at the current time point is based upon both _recent_ and _past_ observations. The `beta = 0.0` which means that the estimate of the slope of the trend component is not updated over the time series, and is instead equal to the initial value. This makes sense since we can see the trend component maintains near constant slope over the time series. The `gamma = 0.95` is very high, which indicates that the estimate of the seasonal component at the current time point is based on very recent observations.
+
+__Plot our results...__
+
+```{r fig.retina=2}
+plot(giftLogF)
+```
+
+It is impressive how well we can predict the peaks in November each year.
+
+__Make forecasts into the future..__
+
+```{r fig.retina=2}
+giftLogF48 <- forecast.HoltWinters(giftLogF, h=48) # predict 48 months ahead
+plot.forecast(giftLogF48)
+```
+
+__Test the model...__
+
+Again, we utilize various types of residual analysis to make sure our model cannot be approved upon.
+
+```{r fig.retina=2}
+acf(giftLogF48$residuals, lag.max=20)
+Box.test(giftLogF48$residuals, lag=20, type='Ljung-Box')
+plot.ts(giftLogF48$residuals)
+```
+
+Everything checks out!
+
+# ARIMA Models
+
+While exponential smoothing methods are useful for forecasting, they make no assumptions about the correlations between successive values of the time series. We can sometimes make better models by utilizing these correlations in the data, using `Autoregressive Integrated Moving Average (ARIMA)` models.
+
+## Differencing a Time Series
+
+ARIMA models are defined only for stationary time series. Therefore, if the raw data are non-stationary, you will need to `difference` the series until you obtain stationarity. Once you know the order of differencing you can use it as the `d` parameter in an `ARIMA(p, d, q)` model. 
+
+In R you can difference a time series using the `diff()` function. For example: the time series of annual skirt diameter is not stationary as the mean level changes a lot over time.
+
+```{r fig.retina=2}
+plot.ts(skirts)
+```
+
+We can take the first difference and plot the differenced series...
+
+```{r fig.retina=2}
+skirtsDiff <- diff(skirts, differences = 1)
+plot.ts(skirtsDiff)
+```
+
+Again, the mean is not quite stationary. Therefore we can take the first difference of the first difference we computed above and see how that looks.
+
+```{r fig.retina=2}
+skirtsDiff2 <- diff(skirts, differences = 2)
+plot.ts(skirtsDiff2)
+```
+
+There we go, it appears that the mean and variance remain constant and stable over time. So far, our model definition is `ARIMA(p, 2, q)`. The next step is to figure out the `p` and `q` values of this model.
+
+__Another Example of Differencing__
+
+Kings death dataset...
+
+```{r fig.retina=2}
+plot.ts(kings)
+```
+
+```{r fig.retina=2}
+# First differencing
+kingsDiff <- diff(kings, differences = 1)
+plot.ts(kingsDiff)
+```
+
+In this case, we can see that an `ARIMA(p, 1, q)` model would be appropriate.
+
+Next we can examine the correlation between successive terms of this irregular differenced component.
+
+## Selecting a Cadidate ARIMA Model
+
+Once we have a stationary time series, the next still is to select the best ARIMA model. To do this we will inspect the `autocorrelation function` (ACF) and `partial autocorrelation function` (PACF). You can find a good collection of some of the 'rules' for selecting ARIMA models from Duke University [here](http://people.duke.edu/~rnau/arimrule.htm).
+
+### Example of Ages of Kings Death
+
+I find it easiest to use some of the functions provided from this [ [textbook](http://www.stat.pitt.edu/stoffer/tsa3/)
+```{r fig.retina=2, fig.height=6, results='hide'}
+# Install the tools
+source(url("http://lib.stat.cmu.edu/general/tsa2/Rcode/itall.R"))
+# Plot ACF and PACF
+acf2(kingsDiff, max.lag = 20)
+```
+
+We can see that the ACF is significant at lag 1 and has an alternating pattern. The PACF depicts significant autocorrelation at the first three lags. 
+
+The two most basic rules are:
+
+  * If the ACF is a sharp cutoff the `q` component is equal to the last significant lag. This type of model also often has a PACF with a tapering pattern. 
+  * If the PACF has a sharp cutoff, the `p` component is equal to the last number of significant lags. Again, the ACF may exhibit a tapering pattern.
+
+Understanding these observations, we would probably test these 2 ARIMA models first.
+
+  * ARIMA (3, 1, 0), since the PACF cuts off sharply after lag 3, and the ACF exhibits a tapering pattern. AR(3), MA(0)
+
+  * ARIMA(0, 1, 1), since the ACF is zero after lag 1 and the PACF does also taper off to some degree. AR(0), MA(1)
+
+Under the case that we have a few potential models, it is convention to pick the simplest model. For now, we will test the diagnostics of the both models, and examine the residual plots, and AIC to determine the best model.
+
+```{r fig.retina=2, fig.height=7}
+sarima(kingsDiff, 0, 1, 1)
+Box.test(kingsDiff, lag=20, type='Ljung-Box')
+```
+
+While there is an auto correlated residual at lag 1, this model is valid.
+
+```{r fig.retina=2, fig.height=7}
+sarima(kingsDiff, 3, 1, 0)
+Box.test(kingsDiff, lag=20, type='Ljung-Box')
+```
+
+The Diagnostics are quite similar here. To choose the best model we can utilize the AIC and see that the first model (also the simplest) performs marginally better.
+
+We can also use the `auto.arima()` function to test the best model with an automated approach and see how it compares to our manual model selection.
+
+```{r}
+auto.arima(kings)
+```
+
+### Example of Volcanic Dust in N Hemisphere
+
+This dataset contains the _volcanic dust veil index in the northern hemisphere from 1500 - 1969. It is a measure of the impact of volcanic eruptions release of dist an aerosols into the environment.
+
+```{r fig.retina=2}
+volc <- ts(scan("http://robjhyndman.com/tsdldata/annual/dvi.dat", skip=1), start=c(1500))
+plot.ts(volc, ylab = 'VDI')
+```
+
+We can see that the this time series may be stationary, since the mean is constant and the variance appears relatively constant over time. Therefore, we do not need to difference this series. Let's investigate the ACF and PACF.
+
+```{r fig.retina=2, fig.height=5}
+acf2(volc)
+```
+
+__The ACF__ depicts a tapering pattern where the first 3 lags are auto correlated. The lags of 19 - 23 are also significant, but we expect that these are by chance, since the autocorrelations for lags 4 - 18 are not significant.
+
+__The PACF__ depicts a sharp cutoff where the first two lags are significant.
+
+Given this information, we have two possible models...
+
+    * ARIMA(2,0,0), since the PACF is zero after lag 2 and the ACF tapers off to zero at lag 2.
+    * ARIMA(0,0,3), since the ACF is zero after lag 3 and the PACF sort-of tails off to zero (though probably to abruptly for this to be appropriate).
+    * ARIMA(1,0,2) as estimated by `auto.arima`. 
+
+```{r fig.retina=2, fig.height=7}
+sarima(volc, 2,0,0)
+sarima(volc, 1,0,2)
+```
+
+Even though the optimal model is ARIMA(1,0,2), we prefer a simpler model and choose ARIMA(2,0,0). If we change our selection criterion to BIC, which penalizes for extra parameters, instead of AIC, we find that the simpler model indeed is the best description of the time series.
+
+## Forecasting Using an ARIMA Model
+    
+__The Kings Death Dataset__
+
+Recall that this dataset can be described using a `ARIMA(0,1,1)` model.
+
+```{r}
+kingsARIMA <- arima(kings, order=c(0,1,1))
+kingsARIMA
+
+library(forecast) 
+
+kingsF <- forecast.Arima(kingsARIMA)
+kingsF
+
+plot.forecast(kingsF)
+
+# Examine the residuals
+acf(kingsF$residuals)
+Box.test(kingsF$residuals, lag = 20, type='Ljung-Box')
+```
+
